@@ -1,0 +1,46 @@
+name: Multi-File Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      files_json:
+        description: 'JSON格式文件列表 [{"url":"URL1","path":"path1"},{"url":"URL2","path":"path2"}]'
+        required: true
+        type: string
+      commit_message:
+        description: '提交信息'
+        required: false
+        default: '批量下载文件'
+        type: string
+
+jobs:
+  download-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download files
+        run: |
+          echo '${{ inputs.files_json }}' | jq -c '.[]' | while read item; do
+            url=$(echo $item | jq -r '.url')
+            path=$(echo $item | jq -r '.path')
+            mkdir -p "$(dirname "$path")"
+            curl -L -o "$path" "$url"
+            echo "下载完成: $path"
+          done
+
+      - name: Show downloaded files
+        run: |
+          echo "=== 已下载的文件 ==="
+          find . -type f -not -path './.git/*' | head -20
+
+      - name: Commit files
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git diff --staged --quiet && echo "没有新文件需要提交" || git commit -m "${{ inputs.commit_message }}"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
