@@ -12,6 +12,11 @@ on:
         required: false
         default: '批量下载文件'
         type: string
+      split_size:
+        description: '文件大小超过此值时拆分（单位MB，默认80）'
+        required: false
+        default: '99.9'
+        type: string
 
 permissions:
   contents: write
@@ -24,6 +29,48 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install Git LFS
+        run: |
+          git lfs install
+
+      - name: Configure Git LFS for large files
+        run: |
+          git lfs track "*.pdf"
+          git lfs track "*.zip"
+          git lfs track "*.rar"
+          git lfs track "*.tar.gz"
+          git lfs track "*.tar"
+          git lfs track "*.7z"
+          git lfs track "*.epub"
+          git lfs track "*.mobi"
+          git lfs track "*.azw"
+          git lfs track "*.azw3"
+          git lfs track "*.djvu"
+          git lfs track "*.chm"
+          git lfs track "*.mp4"
+          git lfs track "*.mkv"
+          git lfs track "*.avi"
+          git lfs track "*.mov"
+          git lfs track "*.wmv"
+          git lfs track "*.flv"
+          git lfs track "*.webm"
+          git lfs track "*.mp3"
+          git lfs track "*.flac"
+          git lfs track "*.wav"
+          git lfs track "*.ogg"
+          git lfs track "*.m4a"
+          git lfs track "*.aac"
+          git lfs track "*.iso"
+          git lfs track "*.img"
+          git lfs track "*.bin"
+          git lfs track "*.dll"
+          git lfs track "*.exe"
+          git lfs track "*.deb"
+          git lfs track "*.rpm"
+          git add .gitattributes
 
       - name: Download files
         run: |
@@ -33,6 +80,18 @@ jobs:
             mkdir -p "$(dirname "$path")"
             curl -L -o "$path" "$url"
             echo "下载完成: $path"
+            
+            FILE_SIZE=$(stat -c%s "$path")
+            SPLIT_SIZE=$(echo "${{ inputs.split_size }} * 1024 * 1024" | bc)
+            
+            if [ "$FILE_SIZE" -gt "$SPLIT_SIZE" ]; then
+              echo "文件 $path 大小为 $FILE_SIZE 字节，超过 $SPLIT_SIZE 字节，开始拆分..."
+              split -b "${{ inputs.split_size }}M" "$path" "$path.part"
+              rm "$path"
+              echo "cat $path.part* > $path" > "$path.merge.sh"
+              chmod +x "$path.merge.sh"
+              echo "拆分完成，生成合并脚本: $path.merge.sh"
+            fi
           done
 
       - name: Show downloaded files
