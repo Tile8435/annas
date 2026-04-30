@@ -1,19 +1,10 @@
-name: Multi-File Downloader
+name: Auto Download from List
 
 on:
   workflow_dispatch:
     inputs:
-      files_json:
-        description: 'JSON格式文件列表 [{"url":"URL1","path":"path1"},{"url":"URL2","path":"path2"}]'
-        required: true
-        type: string
-      commit_message:
-        description: '提交信息'
-        required: false
-        default: '批量下载文件'
-        type: string
       split_size:
-        description: '文件大小超过此值时拆分（单位MB，默认80）'
+        description: '文件大小超过此值时拆分（单位MB，默认99.9）'
         required: false
         default: '99.9'
         type: string
@@ -22,7 +13,7 @@ permissions:
   contents: write
 
 jobs:
-  download-and-commit:
+  download-next-item:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -32,12 +23,10 @@ jobs:
         with:
           lfs: true
 
-      - name: Install Git LFS
+      - name: Install dependencies
         run: |
           git lfs install
-
-      - name: Configure Git LFS for large files
-        run: |
+          sudo apt-get update && sudo apt-get install -y aria2
           git lfs track "*.pdf"
           git lfs track "*.zip"
           git lfs track "*.rar"
@@ -72,40 +61,81 @@ jobs:
           git lfs track "*.rpm"
           git add .gitattributes
 
-      - name: Download files
+      - name: Check for pending items
+        id: check_pending
         run: |
-          echo '${{ inputs.files_json }}' | jq -c '.[]' | while read item; do
-            url=$(echo $item | jq -r '.url')
-            path=$(echo $item | jq -r '.path')
-            mkdir -p "$(dirname "$path")"
-            curl -L -o "$path" "$url"
-            echo "下载完成: $path"
-            
-            FILE_SIZE=$(stat -c%s "$path")
-            SPLIT_SIZE=$(echo "${{ inputs.split_size }} * 1024 * 1024" | bc)
-            
-            if [ "$FILE_SIZE" -gt "$SPLIT_SIZE" ]; then
-              echo "文件 $path 大小为 $FILE_SIZE 字节，超过 $SPLIT_SIZE 字节，开始拆分..."
-              split -b "${{ inputs.split_size }}M" "$path" "$path.part"
-              rm "$path"
-              echo "cat $path.part* > $path" > "$path.merge.sh"
-              chmod +x "$path.merge.sh"
-              echo "拆分完成，生成合并脚本: $path.merge.sh"
-            fi
-          done
+          PENDING_COUNT=$(jq '[.[] | select(.status != "completed")] | length' download_list.json)
+          echo "pending_count=$PENDING_COUNT" >> $GITHUB_OUTPUT
+          if [ "$PENDING_COUNT" -eq 0 ]; then
+            echo "::error::没有待下载的文件，停止运行"
+            exit 1
+          fi
 
-      - name: Show downloaded files
+      - name: Get first pending item
+        id: get_item
         run: |
-          echo "=== 已下载的文件 ==="
-          find . -type f -not -path './.git/*' | head -20
+          URL=$(jq -r '.[] | select(.status != "completed") | .url' download_list.json | head -n 1)
+          PATH=$(jq -r '.[] | select(.status != "completed") | .path' download_list.json | head -n 1)
+          PATH_SAFE="${PATH// /_}"
+          PATH_SAFE="${PATH_SAFE//\#/_}"
+          PATH_SAFE="${PATH_SAFE//\$/_}"
+          PATH_SAFE="${PATH_SAFE//\%/_}"
+          PATH_SAFE="${PATH_SAFE//\&/_}"
+          PATH_SAFE="${PATH_SAFE//\*/_}"
+          PATH_SAFE="${PATH_SAFE//\+/_}"
+          PATH_SAFE="${PATH_SAFE//\,/_}"
+          PATH_SAFE="${PATH_SAFE//\;/_}"
+          PATH_SAFE="${PATH_SAFE//\=/_}"
+          PATH_SAFE="${PATH_SAFE//\?/_}"
+          PATH_SAFE="${PATH_SAFE//\@/_}"
+          PATH_SAFE="${PATH_SAFE//\"/_}"
+          PATH_SAFE="${PATH_SAFE//\</_}"
+          PATH_SAFE="${PATH_SAFE//\>/_}"
+          PATH_SAFE="${PATH_SAFE//\|/_}"
+          PATH_SAFE="${PATH_SAFE//\[/_}"
+          PATH_SAFE="${PATH_SAFE//\]/_}"
+          PATH_SAFE="${PATH_SAFE//\:/_}"
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "path=$PATH" >> $GITHUB_OUTPUT
+          echo "path_safe=$PATH_SAFE" >> $GITHUB_OUTPUT
 
-      - name: Commit files
+      - name: Download file
+        run: |
+          mkdir -p "$(dirname "${{ steps.get_item.outputs.path_safe }}")"
+          
+          if echo "${{ steps.get_item.outputs.url }}" | grep -q "^magnet:"; then
+            echo "检测到磁力链接，使用 aria2 下载..."
+            aria2c -x 16 -j 16 -o "${{ steps.get_item.outputs.path_safe }}" "${{ steps.get_item.outputs.url }}"
+          else
+            echo "使用 curl 下载..."
+            curl -L -o "${{ steps.get_item.outputs.path_safe }}" "${{ steps.get_item.outputs.url }}"
+          fi
+          
+          echo "下载完成: ${{ steps.get_item.outputs.path_safe }}"
+
+          FILE_SIZE=$(stat -c%s "${{ steps.get_item.outputs.path_safe }}")
+          SPLIT_SIZE=$(echo "${{ inputs.split_size }} * 1024 * 1024" | bc)
+          
+          if [ "$FILE_SIZE" -gt "$SPLIT_SIZE" ]; then
+            echo "文件大小为 $FILE_SIZE 字节，超过 $SPLIT_SIZE 字节，开始拆分..."
+            split -b "${{ inputs.split_size }}M" "${{ steps.get_item.outputs.path_safe }}" "${{ steps.get_item.outputs.path_safe }}.part"
+            rm "${{ steps.get_item.outputs.path_safe }}"
+            echo "cat ${{ steps.get_item.outputs.path_safe }}.part* > ${{ steps.get_item.outputs.path_safe }}" > "${{ steps.get_item.outputs.path_safe }}.merge.sh"
+            chmod +x "${{ steps.get_item.outputs.path_safe }}.merge.sh"
+          fi
+
+      - name: Mark as completed
+        run: |
+          jq '(.[] | select(.url == "${{ steps.get_item.outputs.url }}" and .path == "${{ steps.get_item.outputs.path }}")).status = "completed"' download_list.json > temp.json
+          mv temp.json download_list.json
+
+      - name: Commit changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add .
           git diff --staged --quiet && echo "没有新文件需要提交" && exit 0
-          git commit -m "${{ inputs.commit_message }}"
+          git commit -m "下载完成: ${{ steps.get_item.outputs.path_safe }}"
           git pull --rebase origin main || git rebase --abort
           git push
         env:
