@@ -105,7 +105,8 @@ jobs:
           
           if echo "${{ steps.get_item.outputs.url }}" | grep -q "^magnet:"; then
             echo "检测到磁力链接，使用 aria2 下载..."
-            aria2c -x 16 -j 16 -d "$(dirname "${{ steps.get_item.outputs.path_safe }}")" -o "$(basename "${{ steps.get_item.outputs.path_safe }}")" "${{ steps.get_item.outputs.url }}"
+            mkdir -p /home/runner/.cache/aria2
+            aria2c --file-allocation=none --disk-cache=0 -x 16 -j 16 -d "$(dirname "${{ steps.get_item.outputs.path_safe }}")" -o "$(basename "${{ steps.get_item.outputs.path_safe }}")" "${{ steps.get_item.outputs.url }}"
             
             DOWNLOADED_PATH="${{ steps.get_item.outputs.path_safe }}"
             if [ -d "$DOWNLOADED_PATH" ]; then
