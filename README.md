@@ -18,8 +18,7 @@ status：completed已完成，其他字段即为待下载
     "status": "pending"
     
   },
-  
-    {
+  {
     
     "url": "http://a/b.pdf",
     
@@ -27,7 +26,6 @@ status：completed已完成，其他字段即为待下载
     
     "status": "completed"
     
-  }
-  
+  }  
 ]
 '''
