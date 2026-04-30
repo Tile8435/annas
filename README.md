@@ -1,6 +1,11 @@
 在线下载文件，可下载磁力链
 
 download_list.json:
+url：直连链接
+
+path：根目录下路径
+
+status：completed已完成，其他字段即为待下载
 
 [
   {
