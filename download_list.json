@@ -1,12 +1,7 @@
 [
   {
-    "url": "magnet:?xt=urn:btih:4820CD080618855C62F85687D5282B772FB13107&tr=http%3A%2F%2Fbt4.t-ru.org%2Fann%3Fmagnet&dn=Concepts%20NREC%208.9.X%20(2021.03)%20Suite%20Win64%20%5B2021%2C%20ENG%5D",
-    "path": "software/nrec8.9x",
-    "status": "completed"
-  },
-    {
     "url": "magnet:?xt=urn:btih:724A187C4631EAD1EC82F8A6230E77A7AECD3587&tr=http%3A%2F%2Fbt3.t-ru.org%2Fann%3Fmagnet&dn=Concepts%20NREC%208.7.X%20(2019.12)%20Suite%20Win32%2F64%20%5B2019%2C%20ENG%5D",
     "path": "software/nrec8.7x",
-    "status": "qw"
-  },
+    "status": "pending"
+  }
 ]
